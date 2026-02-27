@@ -1,0 +1,150 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>AI HD Enhancer Pro</title>
+    <style>
+        :root { --primary: #3b82f6; --bg: #0f172a; --panel: #1e293b; }
+        body { font-family: sans-serif; background: var(--bg); color: #f8fafc; display: flex; justify-content: center; padding: 20px; }
+        .wrapper { max-width: 900px; width: 100%; background: var(--panel); padding: 30px; border-radius: 20px; box-shadow: 0 25px 50px -12px rgba(0,0,0,0.5); }
+        .header { text-align: center; margin-bottom: 20px; }
+        .grid { display: grid; grid-template-columns: 1fr 250px; gap: 20px; }
+        .preview-area { background: #000; border-radius: 12px; min-height: 400px; display: flex; align-items: center; justify-content: center; overflow: hidden; position: relative; border: 2px solid #334155; }
+        canvas { max-width: 100%; height: auto; display: none; image-rendering: auto; }
+        .controls { background: #334155; padding: 20px; border-radius: 12px; display: flex; flex-direction: column; gap: 15px; }
+        label { font-size: 12px; font-weight: bold; text-transform: uppercase; color: #94a3b8; }
+        input[type="range"] { width: 100%; cursor: pointer; }
+        .btn { background: var(--primary); color: white; border: none; padding: 12px; border-radius: 8px; font-weight: bold; cursor: pointer; transition: 0.2s; }
+        .btn:hover { filter: brightness(1.2); }
+        .btn-download { background: #10b981; margin-top: 10px; }
+        .upload-btn { background: #6366f1; margin-bottom: 10px; }
+        #status { text-align: center; color: var(--primary); font-weight: bold; margin-top: 10px; }
+    </style>
+</head>
+<body>
+
+<div class="wrapper">
+    <div class="header">
+        <h1>High-Def Image Studio</h1>
+        <p>Fix blur, upscale, and remove backgrounds instantly.</p>
+    </div>
+
+    <div class="grid">
+        <div class="preview-area" id="dropZone">
+            <span id="placeholder">Drop Image or Click "Upload"</span>
+            <canvas id="mainCanvas"></canvas>
+        </div>
+
+        <div class="controls">
+            <input type="file" id="fileInput" hidden accept="image/*">
+            <button class="btn upload-btn" onclick="document.getElementById('fileInput').click()">1. Upload Image</button>
+            
+            <hr style="border: 0; border-top: 1px solid #475569; width: 100%;">
+            
+            <label>HD Sharpness Strength</label>
+            <input type="range" id="sharpStrength" min="0" max="100" value="30">
+
+            <label>Upscale Multiplier (HD)</label>
+            <input type="range" id="upscale" min="1" max="2" step="0.5" value="1.5">
+
+            <label>Background Transparency</label>
+            <input type="range" id="bgThreshold" min="0" max="150" value="40">
+
+            <button class="btn" onclick="processAll()">2. Apply HD Magic</button>
+            <button class="btn btn-download" id="dlBtn" style="display:none" onclick="download()">3. Download Result</button>
+            <div id="status"></div>
+        </div>
+    </div>
+</div>
+
+<script>
+    const fileInput = document.getElementById('fileInput');
+    const canvas = document.getElementById('mainCanvas');
+    const ctx = canvas.getContext('2d', { willReadFrequently: true });
+    let originalImg = null;
+
+    fileInput.onchange = (e) => {
+        const reader = new FileReader();
+        reader.onload = (event) => {
+            originalImg = new Image();
+            originalImg.onload = () => {
+                resetCanvas();
+                document.getElementById('placeholder').style.display = 'none';
+                canvas.style.display = 'block';
+                document.getElementById('status').innerText = "Image Loaded!";
+            };
+            originalImg.src = event.target.result;
+        };
+        reader.readAsDataURL(e.target.files[0]);
+    };
+
+    function resetCanvas() {
+        const scale = parseFloat(document.getElementById('upscale').value);
+        canvas.width = originalImg.width * scale;
+        canvas.height = originalImg.height * scale;
+        ctx.imageSmoothingEnabled = true;
+        ctx.imageSmoothingQuality = 'high';
+        ctx.drawImage(originalImg, 0, 0, canvas.width, canvas.height);
+    }
+
+    function processAll() {
+        if (!originalImg) return alert("Upload an image first!");
+        document.getElementById('status').innerText = "Processing HD...";
+        
+        setTimeout(() => {
+            resetCanvas();
+            applyHD();
+            removeBG();
+            document.getElementById('dlBtn').style.display = 'block';
+            document.getElementById('status').innerText = "Enhanced!";
+        }, 50);
+    }
+
+    function applyHD() {
+        const strength = document.getElementById('sharpStrength').value / 100;
+        const imgData = ctx.getImageData(0, 0, canvas.width, canvas.height);
+        const data = imgData.data;
+        const w = canvas.width;
+        
+        // Laplacian Sharpening algorithm
+        const copy = new Uint8ClampedArray(data);
+        for (let i = w * 4; i < data.length - w * 4; i += 4) {
+            for (let j = 0; j < 3; j++) { // R, G, B
+                const idx = i + j;
+                const val = copy[idx] * 5 
+                          - copy[idx - 4] 
+                          - copy[idx + 4] 
+                          - copy[idx - w * 4] 
+                          - copy[idx + w * 4];
+                data[idx] = copy[idx] + (val - copy[idx]) * strength;
+            }
+        }
+        ctx.putImageData(imgData, 0, 0);
+    }
+
+    function removeBG() {
+        const threshold = document.getElementById('bgThreshold').value;
+        const imgData = ctx.getImageData(0, 0, canvas.width, canvas.height);
+        const data = imgData.data;
+
+        // Auto-detect background from corners
+        const rT = data[0], gT = data[1], bT = data[2];
+
+        for (let i = 0; i < data.length; i += 4) {
+            const r = data[i], g = data[i+1], b = data[i+2];
+            const dist = Math.sqrt((r-rT)**2 + (g-gT)**2 + (b-bT)**2);
+            if (dist < threshold) data[i+3] = 0;
+        }
+        ctx.putImageData(imgData, 0, 0);
+    }
+
+    function download() {
+        const link = document.createElement('a');
+        link.download = 'HD_Result.png';
+        link.href = canvas.toDataURL('image/png', 1.0);
+        link.click();
+    }
+</script>
+</body>
+</html>
